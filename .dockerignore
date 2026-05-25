@@ -1,0 +1,16 @@
+.git
+.venv
+backend/.venv
+backend/__pycache__
+backend/.pytest_cache
+backend/data
+data
+docs
+frontend/node_modules
+frontend/dist
+frontend/tsconfig.tsbuildinfo
+__pycache__
+*.pyc
+.env
+.env.*
+!.env.example
