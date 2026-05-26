@@ -110,17 +110,27 @@ class LibraryService:
     async def _auto_login(
         self, client: LibraryClient, username: str, password: str
     ) -> LoginOutcome:
+        # Match the browser flow recorded in docs/har/2.har:
+        #   GET /login  →  GET /auth/createCaptcha  →  POST /auth/signIn
+        # The captcha is bound to the JSESSIONID the server assigns on /login,
+        # so the bootstrap must happen *before* the captcha is fetched.
+        if client.session.csrf is None:
+            await client.bootstrap_session()
+
         attempts = max(1, self._settings.max_login_retries)
         last_outcome: LoginOutcome | None = None
         for _ in range(attempts):
             captcha = await self._fetch_and_recognize_captcha(client)
             if captcha is None or not captcha.suggested_answer:
-                return await client.login(
-                    username=username,
-                    password=password,
-                    captcha_answer="",
-                    captcha_id=captcha.captcha_id if captcha else None,
+                # OCR couldn't read this image; try a fresh captcha rather
+                # than wasting a signIn attempt with an empty answer.
+                last_outcome = LoginOutcome(
+                    success=False,
+                    message="captcha OCR unreadable",
+                    session=client.session,
+                    captcha_required=True,
                 )
+                continue
             outcome = await client.login(
                 username=username,
                 password=password,

@@ -16,11 +16,17 @@ process lifetime.
 from __future__ import annotations
 
 import logging
+import re
 import threading
 from dataclasses import dataclass
 from typing import Protocol
 
 logger = logging.getLogger("autolibrary.captcha_ocr")
+
+# Library captchas are 4-char [a-z0-9]; ddddocr occasionally emits stray
+# uppercase letters or Chinese characters that the server then rejects.
+_VALID_CAPTCHA_CHAR = re.compile(r"[a-z0-9]")
+_EXPECTED_CAPTCHA_LEN = 4
 
 
 class _OcrEngine(Protocol):
@@ -73,10 +79,28 @@ class CaptchaOcr:
         except Exception as exc:  # noqa: BLE001
             logger.warning("ddddocr recognize failed: %s", exc)
             return None
-        cleaned = (answer or "").strip()
-        if not cleaned:
+        cleaned = _normalize_answer(answer)
+        if cleaned is None:
+            logger.debug("ddddocr produced unusable answer: %r", answer)
             return None
         return OcrResult(answer=cleaned, engine="ddddocr")
+
+
+def _normalize_answer(raw: str | None) -> str | None:
+    """Lower-case, strip, drop non-[a-z0-9], require exact expected length.
+
+    The library always serves 4-char lowercase alphanumeric captchas; ddddocr
+    sometimes emits an uppercase letter or a stray Chinese glyph. Returning
+    ``None`` for anything that doesn't match the shape forces the caller to
+    fetch a fresh captcha instead of submitting garbage and burning the
+    server-side rate limit.
+    """
+    if not raw:
+        return None
+    stripped = "".join(_VALID_CAPTCHA_CHAR.findall(raw.lower().strip()))
+    if len(stripped) != _EXPECTED_CAPTCHA_LEN:
+        return None
+    return stripped
 
 
 _global_ocr = CaptchaOcr()

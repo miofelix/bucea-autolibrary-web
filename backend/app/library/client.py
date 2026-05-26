@@ -291,19 +291,23 @@ class LibraryClient:
         captcha_answer: str,
         captcha_id: str | None = None,
     ) -> LoginOutcome:
+        # CSRF must already be loaded so the captcha was issued against the
+        # same JSESSIONID — match the browser order: /login → captcha → signIn.
         if not self._session.csrf:
             await self.bootstrap_session()
         csrf = self._session.csrf
+        # Mirror the browser's exact field order to avoid any server-side
+        # ordering quirks (see docs/har/2.har entry 25 for the reference).
         form = {
             "SYNCHRONIZER_TOKEN": csrf.token if csrf else "",
             "SYNCHRONIZER_URI": csrf.uri if csrf else "/login",
             "username": username,
             "password": password,
-            "answer": captcha_answer,
             "captchaId": captcha_id or self._session.captcha_id or "",
+            "answer": captcha_answer,
             "authid": csrf.authid if csrf else "-1",
         }
-        response = await self._post("/auth/signIn", data=form, rate_key="submit")
+        response = await self._post("/auth/signIn", data=form, rate_key="login")
         content_type = response.headers.get("content-type", "")
 
         if "application/json" in content_type:

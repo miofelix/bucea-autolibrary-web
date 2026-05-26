@@ -29,8 +29,23 @@ def _no_rate_limit() -> RateLimiter:
     return RateLimiter(
         clock=lambda: 0.0,
         sleeper=_noop,
-        intervals={k: 0.0 for k in ("query", "page", "submit", "global")},
+        intervals={k: 0.0 for k in ("query", "page", "submit", "login", "global")},
     )
+
+
+@pytest.fixture(autouse=True)
+def _default_fake_ocr(monkeypatch):
+    """Install a synthetic OCR result so the fake captcha bytes routed via
+    MockTransport don't hit the real ddddocr (which would error on non-image
+    input). Tests can override by reassigning ``get_captcha_ocr`` later.
+    """
+    import app.library.captcha_ocr as ocr_mod
+
+    class _FakeOcr:
+        def recognize(self, _: bytes):
+            return ocr_mod.OcrResult(answer="abcd", engine="fake")
+
+    monkeypatch.setattr(ocr_mod, "get_captcha_ocr", lambda: _FakeOcr())
 
 
 def _make_app(monkeypatch, tmp_path, *, handler, allow_mutation: bool = False):

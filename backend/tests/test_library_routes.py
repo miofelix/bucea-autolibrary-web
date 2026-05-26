@@ -48,8 +48,33 @@ def _no_rate_limit() -> RateLimiter:
     return RateLimiter(
         clock=lambda: 0.0,
         sleeper=_noop,
-        intervals={k: 0.0 for k in ("query", "page", "submit", "global")},
+        intervals={k: 0.0 for k in ("query", "page", "submit", "login", "global")},
     )
+
+
+def _install_fake_ocr(monkeypatch, answer: str = "abcd") -> None:
+    """Mock ddddocr to return a fixed, valid-shaped answer.
+
+    The fake/PNG-shaped bytes the tests feed through MockTransport are not
+    real captcha images, so the real ddddocr raises. We bypass the engine
+    and return a synthetic OcrResult that passes the normalizer.
+    """
+    import app.library.captcha_ocr as ocr_mod
+
+    class _FakeOcr:
+        def recognize(self, _: bytes):
+            return ocr_mod.OcrResult(answer=answer, engine="fake")
+
+    monkeypatch.setattr(ocr_mod, "get_captcha_ocr", lambda: _FakeOcr())
+
+
+@pytest.fixture(autouse=True)
+def _default_fake_ocr(monkeypatch):
+    """Every test gets a working fake OCR by default. Tests that exercise
+    OCR-failure paths reinstall their own FakeOcr inside the test body —
+    that later monkeypatch.setattr wins over this autouse setup.
+    """
+    _install_fake_ocr(monkeypatch)
 
 
 def _make_app(
@@ -343,7 +368,7 @@ def test_reservation_auto_logs_in_before_mutation(monkeypatch, tmp_path) -> None
         )
 
     assert response.status_code == 200, response.text
-    assert paths[:4] == ["/auth/createCaptcha", "/login", "/auth/signIn", "/self"]
+    assert paths[:4] == ["/login", "/auth/createCaptcha", "/auth/signIn", "/self"]
     assert paths[-1] == "/selfRes"
 
 

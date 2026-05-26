@@ -17,6 +17,7 @@ from typing import Awaitable, Callable
 DEFAULT_QUERY_INTERVAL = 3.0
 DEFAULT_PAGE_INTERVAL = 1.0
 DEFAULT_SUBMIT_INTERVAL = 60.0
+DEFAULT_LOGIN_INTERVAL = 2.0
 DEFAULT_GLOBAL_INTERVAL = 0.5
 
 
@@ -29,6 +30,7 @@ class RateLimiter:
             "query": DEFAULT_QUERY_INTERVAL,
             "page": DEFAULT_PAGE_INTERVAL,
             "submit": DEFAULT_SUBMIT_INTERVAL,
+            "login": DEFAULT_LOGIN_INTERVAL,
             "global": DEFAULT_GLOBAL_INTERVAL,
         }
     )
