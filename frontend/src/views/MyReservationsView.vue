@@ -60,15 +60,26 @@
             </td>
             <td data-label="凭证 ID"><code>{{ entry.reservation_id ?? '-' }}</code></td>
             <td data-label="操作">
-              <button
-                class="icon-button"
-                type="button"
-                title="查看详情"
-                :disabled="!entry.reservation_id"
-                @click="openDetail(entry.reservation_id!)"
-              >
-                <Eye :size="16" />
-              </button>
+              <div class="row-actions">
+                <button
+                  class="icon-button"
+                  type="button"
+                  title="查看详情"
+                  :disabled="!entry.reservation_id"
+                  @click="openDetail(entry.reservation_id!)"
+                >
+                  <Eye :size="16" />
+                </button>
+                <button
+                  class="icon-button danger"
+                  type="button"
+                  :title="canCancel(entry) ? '取消该预约' : '该状态不支持取消'"
+                  :disabled="!canCancel(entry) || cancellingId === entry.reservation_id"
+                  @click="cancelEntry(entry)"
+                >
+                  <XCircle :size="16" />
+                </button>
+              </div>
             </td>
           </tr>
         </tbody>
@@ -96,21 +107,50 @@
 
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import { CalendarRange, Eye, Loader, RefreshCw } from '@lucide/vue'
+import { CalendarRange, Eye, Loader, RefreshCw, XCircle } from '@lucide/vue'
 
 import AccountPicker from '@/components/AccountPicker.vue'
 import ReservationActionsPanel from '@/components/ReservationActionsPanel.vue'
 import ReservationDetailDialog from '@/components/ReservationDetailDialog.vue'
-import { fetchHistory, type HistoryEntry } from '@/api/library'
+import { cancelReservation, fetchHistory, type HistoryEntry } from '@/api/library'
 
 const userId = ref<number | null>(null)
 const entries = ref<HistoryEntry[]>([])
 const loading = ref(false)
 const error = ref('')
 const detailId = ref<string | null>(null)
+const cancellingId = ref<string | null>(null)
 
 function openDetail(id: string): void {
   detailId.value = id
+}
+
+function canCancel(entry: HistoryEntry): boolean {
+  if (!entry.reservation_id) return false
+  const status = entry.status ?? ''
+  // 上游放开 cancel 的是「已预约」未签到状态；签到 / 使用中 / 已完成等
+  // 由上游另一组接口（结束使用 / 暂离）负责，避免误触。
+  return status.includes('已预约')
+}
+
+async function cancelEntry(entry: HistoryEntry): Promise<void> {
+  if (!userId.value || !entry.reservation_id) return
+  const label = `${entry.date ?? entry.raw_date_label ?? ''} ${entry.room_name ?? ''}`.trim() || '该预约'
+  if (!window.confirm(`确认取消「${label}」？此操作会调用上游 /reservation/cancel，不可撤销。`)) return
+  cancellingId.value = entry.reservation_id
+  error.value = ''
+  try {
+    const result = await cancelReservation(userId.value, entry.reservation_id)
+    if (!result.success) {
+      error.value = result.message || '取消失败'
+      return
+    }
+    await load()
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : '取消请求失败'
+  } finally {
+    cancellingId.value = null
+  }
 }
 
 watch(userId, async (value) => {
