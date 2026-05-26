@@ -164,16 +164,22 @@
                 已选座位 ID：<strong>{{ payload.seat_id }}</strong>
               </p>
 
+              <p v-if="form.task_type === 'reserve' && seatResults.length > 0" class="hint" style="margin-top:8px;">
+                状态按
+                <strong>{{ form.task_type === 'reserve' ? resolvedReserveDate || '今天' : '今天' }}</strong>
+                查询，仅供参考——任务触发时会按计划日期实时下单，<strong>任何状态的座位都可以选</strong>，到点若被占则任务记为失败。
+              </p>
+
               <ul v-if="seatResults.length > 0" class="seat-grid" style="margin-top:8px;">
                 <li
                   v-for="seat in seatResults"
                   :key="seat.seat_id"
                   class="seat-card"
                   :class="[
-                    { active: String(seat.seat_id) === payload.seat_id, disabled: seat.status !== 'free' },
+                    { active: String(seat.seat_id) === payload.seat_id, warn: seat.status !== 'free' },
                     seat.status,
                   ]"
-                  :title="seat.status !== 'free' ? '该座位当前不可预约' : ''"
+                  :title="seat.status !== 'free' ? `查询日期该座位状态：${seat.status}（仍可作为目标，下单时再实时尝试）` : ''"
                   @click="selectSeat(seat)"
                 >
                   <strong>{{ seat.name }}</strong>
@@ -516,6 +522,10 @@ async function searchSeatsForTask(): Promise<void> {
   seatLoading.value = true
   try {
     const result = await searchSeats(form.library_user_id, {
+      // For reserve tasks query the target date so statuses reflect that
+      // day instead of "now"; the seat picker no longer gates on status,
+      // but at least the badge stops lying about a different day.
+      on_date: form.task_type === 'reserve' ? effectiveDate() || undefined : undefined,
       building: seatBuilding.value || undefined,
       room: seatRoom.value || undefined,
       offset: 1,
@@ -529,10 +539,8 @@ async function searchSeatsForTask(): Promise<void> {
 }
 
 async function selectSeat(seat: SeatItem): Promise<void> {
-  if (seat.status !== 'free') {
-    seatError.value = `座位 ${seat.name} 当前为「${seat.status}」状态，不可预约。`
-    return
-  }
+  // 任务向导承诺的是「未来某个时刻去抢这个座位」，不是即时下单，所以
+  // 不再用 status 拦截。`SeatSearchView` 一次性预约场景仍保留 free-only。
   seatError.value = ''
   payload.seat_id = String(seat.seat_id)
   payload.start = ''
@@ -957,11 +965,16 @@ async function runTask(task: TaskRecord): Promise<void> {
   background: #eaf7f4;
 }
 
-.seat-card.using,
-.seat-card.booked,
-.seat-card.disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
+.seat-card.warn {
+  /* Non-free seat for a future task — still selectable, just visually
+     muted so the user knows the displayed status was just a snapshot. */
+  opacity: 0.72;
+  border-style: dashed;
+}
+
+.seat-card.warn.active {
+  opacity: 1;
+  border-style: solid;
 }
 
 .seat-room {
