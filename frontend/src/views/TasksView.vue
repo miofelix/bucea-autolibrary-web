@@ -96,20 +96,10 @@
                 <option v-for="opt in RESERVE_DATE_OPTIONS" :key="opt.value" :value="opt.value">
                   {{ opt.label }}
                 </option>
-                <option value="custom">指定日期…</option>
               </select>
-              <input
-                v-if="reserveDateMode === 'custom'"
-                v-model="payload.date"
-                type="date"
-                style="margin-top: 6px;"
-                @change="onDateChange"
-              />
               <small class="hint">
-                <template v-if="reserveDateMode === 'custom'">固定日期，过期不会自动顺延。</template>
-                <template v-else>
-                  任务运行时实际生效日期：<code>{{ resolvedReserveDateLabel }}</code>
-                </template>
+                T = 任务触发那一天；定时任务以 cron 实际触发当日为基准。当前预览：
+                <code>{{ resolvedReserveDateLabel }}</code>
               </small>
             </label>
 
@@ -395,19 +385,20 @@ const loadingStart = ref(false)
 const loadingEnd = ref(false)
 
 const RESERVE_DATE_OPTIONS: { value: string; label: string; offset: number }[] = [
-  { value: '0', label: '今天', offset: 0 },
-  { value: '1', label: '明天 (推荐)', offset: 1 },
-  { value: '2', label: '后天', offset: 2 },
-  { value: '3', label: '+3 天', offset: 3 },
-  { value: '7', label: '+7 天', offset: 7 },
+  // T = 任务触发那一天 (基准日)。沿用结算/排期里 T+N 的标准写法，
+  // 让用户从标签就能看出日期是相对而非绝对。
+  { value: '0', label: 'T+0  执行当日', offset: 0 },
+  { value: '1', label: 'T+1  次日', offset: 1 },
+  { value: '2', label: 'T+2', offset: 2 },
+  { value: '3', label: 'T+3', offset: 3 },
+  { value: '4', label: 'T+4', offset: 4 },
+  { value: '5', label: 'T+5', offset: 5 },
 ]
 
-// 'custom' = 用绝对日期，其他字符串都是 RESERVE_DATE_OPTIONS 的 value (相对偏移)
-const reserveDateMode = ref<string>('1')
+// reserveDateMode 总是 RESERVE_DATE_OPTIONS 里的 value (字符串化的偏移天数)
+const reserveDateMode = ref<string>('0')
 
-const reserveDateOffset = computed(() =>
-  reserveDateMode.value === 'custom' ? null : Number(reserveDateMode.value),
-)
+const reserveDateOffset = computed(() => Number(reserveDateMode.value))
 
 function isoDate(d: Date): string {
   const y = d.getFullYear()
@@ -426,9 +417,7 @@ function dateForOffset(offset: number): string {
 // 当前 reserve 任务实际生效的日期 (传给 fetchStartTimes 等)
 const resolvedReserveDate = computed(() => {
   if (form.task_type !== 'reserve') return payload.date
-  if (reserveDateMode.value === 'custom') return payload.date
-  const offset = reserveDateOffset.value ?? 0
-  return dateForOffset(offset)
+  return dateForOffset(reserveDateOffset.value)
 })
 
 const resolvedReserveDateLabel = computed(() => {
@@ -440,10 +429,9 @@ const resolvedReserveDateLabel = computed(() => {
 })
 
 function onReserveDateModeChange(): void {
-  if (reserveDateMode.value !== 'custom') {
-    // 相对模式：把同步过去的 payload.date 重算一遍，触发时段重新加载。
-    payload.date = resolvedReserveDate.value
-  }
+  // 把映射到实际日期的字符串同步进 payload.date，让兼容 absolute date
+  // 的 effectiveDate() 也能拿到正确值；座位时段需要按新日期重算。
+  payload.date = resolvedReserveDate.value
   if (payload.seat_id) {
     payload.start = ''
     payload.end = ''
@@ -606,9 +594,10 @@ function onStartChange(): void {
 function buildPayload(): Record<string, unknown> | null {
   const out: Record<string, unknown> = {}
   for (const field of kind.value.fields) {
-    if (field === 'date' && form.task_type === 'reserve' && reserveDateMode.value !== 'custom') {
-      // Reserve 任务用相对偏移代替绝对日期，后端在运行时算出实际日期。
-      out.date_offset = reserveDateOffset.value ?? 0
+    if (field === 'date' && form.task_type === 'reserve') {
+      // Reserve 任务永远用相对偏移，后端在运行时算出实际日期，避免到点
+      // 跑的还是创建时那天的硬编码值。
+      out.date_offset = reserveDateOffset.value
       continue
     }
     const v = payload[field as keyof PayloadState]
@@ -667,7 +656,7 @@ function resetForm(): void {
   payload.start = ''
   payload.end = ''
   payload.reservation_id = ''
-  reserveDateMode.value = '1'
+  reserveDateMode.value = '0'
   seatRooms.value = []
   seatResults.value = []
   seatError.value = ''
@@ -692,20 +681,15 @@ async function editTask(task: TaskRecord): Promise<void> {
   const p = task.payload ?? {}
   payload.date = String(p.date ?? '')
   if (task.task_type === 'reserve') {
+    // 新 schema：reserve 永远走相对偏移；老任务里可能存的是绝对 date 或
+    // 超过 +5 的 offset，统一回退到「当天」并清掉绝对日期。
     const offsetRaw = p.date_offset
-    if (offsetRaw !== undefined && offsetRaw !== null && payload.date === '') {
-      const offset = Number(offsetRaw)
-      const matched = RESERVE_DATE_OPTIONS.find((o) => o.offset === offset)
-      reserveDateMode.value = matched ? matched.value : 'custom'
-      if (!matched) {
-        // 偏移量不在预设里，退化成绝对模式 + 当前算出的实际日期。
-        payload.date = dateForOffset(Number.isFinite(offset) ? offset : 0)
-      }
-    } else {
-      reserveDateMode.value = 'custom'
-    }
+    const offset = Number(offsetRaw)
+    const matched = RESERVE_DATE_OPTIONS.find((o) => o.offset === offset)
+    reserveDateMode.value = matched ? matched.value : '0'
+    payload.date = resolvedReserveDate.value
   } else {
-    reserveDateMode.value = '1'
+    reserveDateMode.value = '0'
   }
   payload.building = String(p.building ?? '1')
   payload.room = String(p.room ?? '')
