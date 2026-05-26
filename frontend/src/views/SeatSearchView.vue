@@ -13,8 +13,11 @@
 
         <label class="field">
           <span>日期</span>
-          <input v-model="state.date" type="date" />
-          <small class="hint">未选择则默认今日。</small>
+          <select v-model="state.date">
+            <option value="">今天</option>
+            <option :value="tomorrowDate">次日（{{ tomorrowDate }}）</option>
+          </select>
+          <small class="hint">官网仅支持当天与次日两个选项。</small>
         </label>
 
         <label class="field">
@@ -123,6 +126,16 @@ const error = ref('')
 const reserving = ref<SeatItem | null>(null)
 
 const canLoadRooms = computed(() => !!state.userId && !!state.building)
+
+const tomorrowDate = computed(() => {
+  const d = new Date()
+  d.setHours(0, 0, 0, 0)
+  d.setDate(d.getDate() + 1)
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+})
 
 watch(
   () => state.userId,
