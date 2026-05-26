@@ -172,6 +172,134 @@ def test_login_round_trip_persists_session(monkeypatch, tmp_path) -> None:
     assert body["has_csrf"] is True
 
 
+def test_login_resets_stale_cookies_to_recover_from_session_timeout(
+    monkeypatch, tmp_path
+) -> None:
+    """Re-login after upstream session timeout must do a fresh handshake.
+
+    Before the fix: cached CSRF kept the bootstrap step from running, so
+    /auth/createCaptcha was rebound to a freshly rotated JSESSIONID while
+    /auth/signIn still carried the old SYNCHRONIZER_TOKEN -> "still on
+    login page". User had to click 退出登录 then 自动登录 to recover.
+    """
+    import asyncio
+
+    from app.library.csrf import CsrfBundle
+
+    seen_cookies: list[tuple[str, str | None]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        jsess = request.headers.get("cookie", "")
+        seen_cookies.append((path, jsess or None))
+        if path == "/login":
+            # Bootstrap rotates the cookie to "fresh".
+            return httpx.Response(
+                200,
+                text=LOGIN_HTML,
+                headers={"set-cookie": "JSESSIONID=fresh; Path=/"},
+            )
+        if path == "/auth/createCaptcha":
+            # Captcha must be bound to the fresh session.
+            if "JSESSIONID=fresh" not in jsess:
+                return httpx.Response(500, text="captcha bound to wrong session")
+            return httpx.Response(
+                200,
+                json={
+                    "captchaId": "cap-fresh",
+                    "captchaImage": "data:image/png;base64,Zg==",
+                },
+                headers={"content-type": "application/json"},
+            )
+        if path == "/auth/signIn":
+            if "JSESSIONID=fresh" not in jsess:
+                return httpx.Response(
+                    200, text=LOGIN_HTML, headers={"content-type": "text/html"}
+                )
+            return httpx.Response(200, json={"success": True})
+        if path == "/self":
+            return httpx.Response(200, text=SELF_HTML)
+        return httpx.Response(404)
+
+    app, store = _make_app(monkeypatch, tmp_path, handler=handler)
+    with TestClient(app) as client:
+        user_id = _create_user(client)
+
+        async def prime_stale() -> None:
+            # Simulate the post-timeout state: we still *think* we're
+            # logged in and we still have a CSRF token, but the cookie
+            # the upstream server cares about is dead.
+            await store.set(
+                LibrarySession(
+                    library_user_id=user_id,
+                    logged_in=True,
+                    sys_username="202404020113",
+                    csrf=CsrfBundle(token="stale", uri="/self", authid="-1"),
+                    cookies={"JSESSIONID": "stale"},
+                )
+            )
+
+        asyncio.run(prime_stale())
+
+        response = client.post(f"/api/library/{user_id}/login")
+
+    body = response.json()
+    assert response.status_code == 200
+    assert body["success"] is True, body
+    # Bootstrap must run before captcha so the captcha+signIn use the
+    # rotated JSESSIONID, not the stale one.
+    paths = [p for p, _ in seen_cookies]
+    assert paths[:3] == ["/login", "/auth/createCaptcha", "/auth/signIn"]
+
+
+def test_session_status_probes_and_clears_stale_cached_state(monkeypatch, tmp_path) -> None:
+    """If the cached session says logged_in but upstream disagrees, the
+    /session endpoint must not parrot the cached lie."""
+    import asyncio
+
+    from app.library.csrf import CsrfBundle
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path == "/self":
+            # Server sends the login page back: session has timed out.
+            return httpx.Response(200, text=LOGIN_HTML)
+        if path == "/login":
+            return httpx.Response(200, text=LOGIN_HTML)
+        if path == "/auth/createCaptcha":
+            # Make the recovery attempt fail so we can observe the
+            # honest "logged_in: false" state without a successful
+            # re-handshake masking it.
+            return httpx.Response(500, text="upstream down")
+        return httpx.Response(404)
+
+    app, store = _make_app(monkeypatch, tmp_path, handler=handler)
+    with TestClient(app) as client:
+        user_id = _create_user(client)
+
+        async def prime_stale() -> None:
+            await store.set(
+                LibrarySession(
+                    library_user_id=user_id,
+                    logged_in=True,
+                    sys_username="202404020113",
+                    csrf=CsrfBundle(token="stale", uri="/self", authid="-1"),
+                    cookies={"JSESSIONID": "stale"},
+                )
+            )
+
+        asyncio.run(prime_stale())
+
+        response = client.get(f"/api/library/{user_id}/session")
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    # The bug we are guarding against: UI showing "已登录" while every
+    # real action would fail because the upstream session is dead.
+    assert body["logged_in"] is False
+    assert body["sys_username"] is None
+
+
 def test_auto_login_retries_on_captcha_failure(monkeypatch, tmp_path) -> None:
     """Auto login: OCR is wrong twice, third try is accepted."""
     sign_in_attempts: list[str] = []

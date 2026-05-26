@@ -344,9 +344,44 @@ class LibraryClient:
             return
         self._update_context(response.text)
 
-    async def logout(self) -> None:
-        await self._get("/logout", rate_key="global")
+    def reset(self) -> None:
+        """Drop the in-memory session and the httpx cookie jar.
+
+        Used when the upstream session was rotated/expired behind our back
+        and we need to retry from a fully clean slate. Without clearing
+        the cookie jar, the next request would still send the stale
+        JSESSIONID, which is what produces the
+        "login failed (still on login page)" symptom after a session
+        timeout.
+        """
+        self._client.cookies.clear()
         self._session = self._session.cleared()
+
+    async def verify_logged_in(self) -> bool:
+        """Cheap probe to confirm the cached login is still alive upstream.
+
+        Returns True when the server still treats us as authenticated;
+        otherwise calls ``reset()`` so the local state stops lying and
+        the next login attempt does a fresh handshake.
+        """
+        if not self._session.logged_in:
+            return False
+        try:
+            response = await self._get("/self", rate_key="global")
+        except LibraryUpstreamError:
+            return False
+        context = self._update_context(response.text)
+        if context.sys_username:
+            return True
+        self.reset()
+        return False
+
+    async def logout(self) -> None:
+        try:
+            await self._get("/logout", rate_key="global")
+        except LibraryUpstreamError:
+            pass
+        self.reset()
 
     # ------------------------------------------------------------------ rooms / seats / times
 

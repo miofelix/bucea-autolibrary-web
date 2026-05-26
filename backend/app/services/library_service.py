@@ -25,7 +25,11 @@ from app.library.client import (
     MutationResult,
     SeatSearchFilters,
 )
-from app.library.errors import MutationDisabledError, NotLoggedInError
+from app.library.errors import (
+    LibraryUpstreamError,
+    MutationDisabledError,
+    NotLoggedInError,
+)
 from app.library.html_parsers import (
     HistoryEntry,
     ReservationDetail,
@@ -169,6 +173,12 @@ class LibraryService:
         password = self._encryptor.decrypt(user.password_encrypted)
 
         async with self._client(library_user_id) as client:
+            # The user clicked "auto login" -- treat it as "start clean".
+            # Otherwise stale cookies/CSRF from a timed-out upstream session
+            # cause the captcha to bind to a freshly rotated JSESSIONID
+            # while we POST signIn with the old SYNCHRONIZER_TOKEN, which
+            # the server rejects as "still on login page".
+            client.reset()
             return await self._auto_login(client, user.username, password)
 
     async def _fetch_and_recognize_captcha(
@@ -199,7 +209,23 @@ class LibraryService:
         await self._store.clear(library_user_id)
 
     async def session_status(self, library_user_id: int) -> dict[str, object]:
-        async with self._authenticated_client(library_user_id) as client:
+        async with self._client(library_user_id) as client:
+            # Don't trust the cached logged_in flag -- if the upstream
+            # session was rotated/expired we'd report "已登录" while every
+            # real action fails. verify_logged_in() resets local state on
+            # failure so the next step / next call can re-handshake.
+            if client.session.logged_in:
+                await client.verify_logged_in()
+            # Preserve the prior behavior of attempting a login from this
+            # endpoint, but stay tolerant: session_status reports state,
+            # it shouldn't 500 just because the upstream is unhealthy.
+            if not client.session.logged_in:
+                user = self._load_user(library_user_id)
+                password = self._encryptor.decrypt(user.password_encrypted)
+                try:
+                    await self._auto_login(client, user.username, password)
+                except LibraryUpstreamError:
+                    pass
             session = client.session
         return {
             "library_user_id": library_user_id,
