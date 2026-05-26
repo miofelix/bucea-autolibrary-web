@@ -9,7 +9,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import date as _date, datetime, timedelta, timezone
 from typing import Any
 
 from sqlmodel import Session, select
@@ -23,6 +23,27 @@ from app.services.task_service import TaskService
 
 
 logger = logging.getLogger("autolibrary.jobs")
+
+
+def _resolve_reservation_date(payload: dict[str, Any]) -> str:
+    """Resolve the YYYY-MM-DD a RESERVE task should target at run time.
+
+    An explicit ``date`` field always wins (one-shot jobs and tasks
+    saved before the relative-offset UI existed). Otherwise we read
+    ``date_offset`` as "days from today" so a scheduled task that runs
+    every morning targets the right day each time it fires.
+    """
+    explicit = str(payload.get("date") or "").strip()
+    if explicit:
+        return explicit
+    raw_offset = payload.get("date_offset")
+    if raw_offset is None:
+        return ""
+    try:
+        offset = int(raw_offset)
+    except (TypeError, ValueError):
+        return ""
+    return (_date.today() + timedelta(days=offset)).strftime("%Y-%m-%d")
 
 
 @dataclass(frozen=True)
@@ -128,12 +149,19 @@ class JobRunner:
             result = await self._library.search_seats(user_id, filters)
             return f"found {result.seat_num} seats"
         if task_type == TaskType.RESERVE:
+            date_str = _resolve_reservation_date(payload)
+            if "date_offset" in payload:
+                await self._log(
+                    job,
+                    JobLogLevel.INFO,
+                    f"reserve: resolved date={date_str} from offset={payload.get('date_offset')!r}",
+                )
             mutation = await self._library.submit_reservation(
                 user_id,
                 seat_id=int(payload["seat_id"]),
                 start=str(payload["start"]),
                 end=str(payload["end"]),
-                date=str(payload.get("date", "")),
+                date=date_str,
             )
             return mutation.message or ("reserved" if mutation.success else "reservation failed")
         if task_type == TaskType.CANCEL:

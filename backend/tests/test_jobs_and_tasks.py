@@ -225,6 +225,79 @@ def test_job_run_search_returns_seat_count(monkeypatch, tmp_path) -> None:
         assert any("found 2 seats" in entry["message"] for entry in logs)
 
 
+def test_resolve_reservation_date_prefers_explicit_value() -> None:
+    from app.services.job_runner import _resolve_reservation_date
+
+    assert _resolve_reservation_date({"date": "2026-05-26"}) == "2026-05-26"
+    # Explicit beats offset so legacy tasks keep behaving like before.
+    assert (
+        _resolve_reservation_date({"date": "2026-05-26", "date_offset": 3})
+        == "2026-05-26"
+    )
+    assert _resolve_reservation_date({"date": ""}) == ""
+    assert _resolve_reservation_date({}) == ""
+
+
+def test_resolve_reservation_date_applies_offset_from_today() -> None:
+    from datetime import date, timedelta
+
+    from app.services.job_runner import _resolve_reservation_date
+
+    today = date.today()
+    assert _resolve_reservation_date({"date_offset": 0}) == today.strftime("%Y-%m-%d")
+    assert _resolve_reservation_date({"date_offset": 1}) == (
+        today + timedelta(days=1)
+    ).strftime("%Y-%m-%d")
+    # Bad input falls back to empty string instead of raising — the
+    # upstream client treats empty date as "today".
+    assert _resolve_reservation_date({"date_offset": "not a number"}) == ""
+
+
+def test_reserve_task_with_date_offset_targets_tomorrow(monkeypatch, tmp_path) -> None:
+    """A scheduled reserve task should bind to (today + offset) at run time,
+    not to the date that was current when the task was created."""
+    from datetime import date, timedelta
+
+    expected_date = (date.today() + timedelta(days=1)).strftime("%Y-%m-%d")
+    seen_form: dict[str, str] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        auto = _auto_login_response(request)
+        if auto is not None:
+            return auto
+        if request.url.path == "/selfRes":
+            from urllib.parse import parse_qs
+
+            parsed = parse_qs(request.content.decode())
+            seen_form.update({k: v[0] for k, v in parsed.items()})
+            return httpx.Response(200, json={"success": True, "message": "ok"})
+        return httpx.Response(404)
+
+    app = _make_app(monkeypatch, tmp_path, handler=handler, allow_mutation=True)
+    with TestClient(app) as client:
+        user_id = _create_user(client)
+        task = client.post(
+            "/api/tasks",
+            json={
+                "name": "明天预约",
+                "task_type": "reserve",
+                "mode": "manual",
+                "library_user_id": user_id,
+                "payload": {
+                    "seat_id": 5775,
+                    "start": "960",
+                    "end": "1320",
+                    "date_offset": 1,
+                },
+            },
+        ).json()
+
+        run = client.post("/api/jobs/run", json={"task_id": task["id"]}).json()
+        assert run["status"] == "success", run
+
+    assert seen_form.get("date") == expected_date
+
+
 def test_job_blocked_when_mutation_disabled(monkeypatch, tmp_path) -> None:
     def handler(_: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json={"success": True})

@@ -90,7 +90,30 @@
           <div class="step-body">
             <strong>参数</strong>
 
-            <label v-if="kind.fields.includes('date')" class="field">
+            <label v-if="kind.fields.includes('date') && form.task_type === 'reserve'" class="field">
+              <span>日期</span>
+              <select v-model="reserveDateMode" @change="onReserveDateModeChange">
+                <option v-for="opt in RESERVE_DATE_OPTIONS" :key="opt.value" :value="opt.value">
+                  {{ opt.label }}
+                </option>
+                <option value="custom">指定日期…</option>
+              </select>
+              <input
+                v-if="reserveDateMode === 'custom'"
+                v-model="payload.date"
+                type="date"
+                style="margin-top: 6px;"
+                @change="onDateChange"
+              />
+              <small class="hint">
+                <template v-if="reserveDateMode === 'custom'">固定日期，过期不会自动顺延。</template>
+                <template v-else>
+                  任务运行时实际生效日期：<code>{{ resolvedReserveDateLabel }}</code>
+                </template>
+              </small>
+            </label>
+
+            <label v-else-if="kind.fields.includes('date')" class="field">
               <span>日期</span>
               <input v-model="payload.date" type="date" @change="onDateChange" />
               <small class="hint">未选择则执行当天。</small>
@@ -365,6 +388,64 @@ const endTimes = ref<TimeOption[]>([])
 const loadingStart = ref(false)
 const loadingEnd = ref(false)
 
+const RESERVE_DATE_OPTIONS: { value: string; label: string; offset: number }[] = [
+  { value: '0', label: '今天', offset: 0 },
+  { value: '1', label: '明天 (推荐)', offset: 1 },
+  { value: '2', label: '后天', offset: 2 },
+  { value: '3', label: '+3 天', offset: 3 },
+  { value: '7', label: '+7 天', offset: 7 },
+]
+
+// 'custom' = 用绝对日期，其他字符串都是 RESERVE_DATE_OPTIONS 的 value (相对偏移)
+const reserveDateMode = ref<string>('1')
+
+const reserveDateOffset = computed(() =>
+  reserveDateMode.value === 'custom' ? null : Number(reserveDateMode.value),
+)
+
+function isoDate(d: Date): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+function dateForOffset(offset: number): string {
+  const d = new Date()
+  d.setHours(0, 0, 0, 0)
+  d.setDate(d.getDate() + offset)
+  return isoDate(d)
+}
+
+// 当前 reserve 任务实际生效的日期 (传给 fetchStartTimes 等)
+const resolvedReserveDate = computed(() => {
+  if (form.task_type !== 'reserve') return payload.date
+  if (reserveDateMode.value === 'custom') return payload.date
+  const offset = reserveDateOffset.value ?? 0
+  return dateForOffset(offset)
+})
+
+const resolvedReserveDateLabel = computed(() => {
+  const iso = resolvedReserveDate.value
+  if (!iso) return '—'
+  const d = new Date(iso + 'T00:00:00')
+  const weekday = ['日', '一', '二', '三', '四', '五', '六'][d.getDay()]
+  return `${iso} (周${weekday})`
+})
+
+function onReserveDateModeChange(): void {
+  if (reserveDateMode.value !== 'custom') {
+    // 相对模式：把同步过去的 payload.date 重算一遍，触发时段重新加载。
+    payload.date = resolvedReserveDate.value
+  }
+  if (payload.seat_id) {
+    payload.start = ''
+    payload.end = ''
+    endTimes.value = []
+    loadStartTimesForTask()
+  }
+}
+
 const kind = computed(() => taskKind(form.task_type))
 const defaultName = computed(() => `${kind.value.label}任务`)
 const canSave = computed(() => !!form.library_user_id && (form.mode !== 'scheduled' || !!form.cron))
@@ -461,11 +542,19 @@ async function selectSeat(seat: SeatItem): Promise<void> {
   await loadStartTimesForTask()
 }
 
+function effectiveDate(): string {
+  return form.task_type === 'reserve' ? resolvedReserveDate.value : payload.date
+}
+
 async function loadStartTimesForTask(): Promise<void> {
   if (!payload.seat_id || !form.library_user_id) return
   loadingStart.value = true
   try {
-    const result = await fetchStartTimes(form.library_user_id, Number(payload.seat_id), payload.date)
+    const result = await fetchStartTimes(
+      form.library_user_id,
+      Number(payload.seat_id),
+      effectiveDate(),
+    )
     startTimes.value = result.options
   } catch (err) {
     seatError.value = err instanceof Error ? err.message : '加载开始时间失败'
@@ -482,7 +571,7 @@ async function loadEndTimesForTask(): Promise<void> {
       form.library_user_id,
       Number(payload.seat_id),
       payload.start,
-      payload.date,
+      effectiveDate(),
     )
   } catch (err) {
     seatError.value = err instanceof Error ? err.message : '加载结束时间失败'
@@ -509,6 +598,11 @@ function onStartChange(): void {
 function buildPayload(): Record<string, unknown> | null {
   const out: Record<string, unknown> = {}
   for (const field of kind.value.fields) {
+    if (field === 'date' && form.task_type === 'reserve' && reserveDateMode.value !== 'custom') {
+      // Reserve 任务用相对偏移代替绝对日期，后端在运行时算出实际日期。
+      out.date_offset = reserveDateOffset.value ?? 0
+      continue
+    }
     const v = payload[field as keyof PayloadState]
     if (!v) continue
     if (field === 'seat_id') {
@@ -565,6 +659,7 @@ function resetForm(): void {
   payload.start = ''
   payload.end = ''
   payload.reservation_id = ''
+  reserveDateMode.value = '1'
   seatRooms.value = []
   seatResults.value = []
   seatError.value = ''
@@ -588,6 +683,22 @@ async function editTask(task: TaskRecord): Promise<void> {
   cronPreset.value = CRON_PRESETS.find((p) => p.value === (task.cron ?? ''))?.value ?? ''
   const p = task.payload ?? {}
   payload.date = String(p.date ?? '')
+  if (task.task_type === 'reserve') {
+    const offsetRaw = p.date_offset
+    if (offsetRaw !== undefined && offsetRaw !== null && payload.date === '') {
+      const offset = Number(offsetRaw)
+      const matched = RESERVE_DATE_OPTIONS.find((o) => o.offset === offset)
+      reserveDateMode.value = matched ? matched.value : 'custom'
+      if (!matched) {
+        // 偏移量不在预设里，退化成绝对模式 + 当前算出的实际日期。
+        payload.date = dateForOffset(Number.isFinite(offset) ? offset : 0)
+      }
+    } else {
+      reserveDateMode.value = 'custom'
+    }
+  } else {
+    reserveDateMode.value = '1'
+  }
   payload.building = String(p.building ?? '1')
   payload.room = String(p.room ?? '')
   payload.seat_id = p.seat_id !== undefined ? String(p.seat_id) : ''
