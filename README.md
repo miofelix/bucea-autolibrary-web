@@ -32,11 +32,12 @@ FastAPI 后端
 推荐使用 Docker 部署。普通用户不需要 clone 项目，也不需要安装 Python、Node.js 或本地构建前后端；只需要安装 Docker，一行命令即可启动：
 
 ```bash
+mkdir -p ~/.autolibrary
 docker run -d \
   --name autolibrary \
   --restart unless-stopped \
   -p 3000:8000 \
-  -v ./data:/app/data \
+  -v ~/.autolibrary:/app/data \
   miofelix/bucea-autolibrary-web:latest
 ```
 
@@ -60,7 +61,7 @@ docker logs -f autolibrary                # 查看实时日志
 docker restart autolibrary                # 重启容器
 docker stop autolibrary                   # 停止容器（保留数据）
 docker start autolibrary                  # 重新启动已存在的容器
-docker rm autolibrary                     # 删除容器（数据在 ./data 不受影响）
+docker rm autolibrary                     # 删除容器（数据在 ~/.autolibrary 不受影响）
 ```
 
 更新到已发布的新镜像：
@@ -72,7 +73,7 @@ docker run -d \
   --name autolibrary \
   --restart unless-stopped \
   -p 3000:8000 \
-  -v ./data:/app/data \
+  -v ~/.autolibrary:/app/data \
   miofelix/bucea-autolibrary-web:latest
 ```
 
@@ -84,17 +85,19 @@ docker rm -f autolibrary
 docker run -d --name autolibrary --restart unless-stopped -p 3000:8000 \
   --env-file .env \
   -e AUTO_LIBRARY_DATABASE_URL=sqlite:////app/data/autolibrary.db \
-  -v ./data:/app/data \
+  -v ~/.autolibrary:/app/data \
   miofelix/bucea-autolibrary-web:0.1.0
 ```
 
 数据和配置：
 
-- `data/`：SQLite 数据库和运行数据，需要备份。
+- `~/.autolibrary/`（容器内 `/app/data`）：SQLite 数据库和运行数据，需要备份。
 
-迁移到另一台机器时，复制 `data/` 目录即可。排查问题时，先运行 `docker ps -a`，再运行 `docker logs autolibrary`。
+迁移到另一台机器时，复制 `~/.autolibrary` 目录即可。排查问题时，先运行 `docker ps -a`，再运行 `docker logs autolibrary`。
 
-单容器说明：FastAPI 监听 8000（容器内），同时提供 `/api` 和前端静态页面。SQLite 文件挂载到宿主机 `./data`。镜像不包含 Selenium、Playwright、Chromedriver 或任何浏览器。
+> 注意：`-v ~/.autolibrary:/app/data` 的 `~` 由 shell 展开，所以必须以普通用户身份在交互 shell 里执行；如果走 systemd / 自动化脚本，请改写成绝对路径，例如 `-v "$HOME/.autolibrary":/app/data` 或 `-v /home/ubuntu/.autolibrary:/app/data`。
+
+单容器说明：FastAPI 监听 8000（容器内），同时提供 `/api` 和前端静态页面。SQLite 文件挂载到宿主机 `~/.autolibrary`。镜像不包含 Selenium、Playwright、Chromedriver 或任何浏览器。
 
 ### 可选环境变量
 
