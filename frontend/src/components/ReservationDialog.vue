@@ -18,10 +18,12 @@
           <code>{{ date || '今天' }}</code>
         </div>
 
+        <p v-if="usingHint" class="notice info">{{ usingHint }}</p>
+
         <label class="field">
           <span>开始时间</span>
-          <select v-model="startValue" :disabled="loadingStart">
-            <option value="">— 请选择 —</option>
+          <select v-model="startValue" :disabled="loadingStart || startTimes.length === 0">
+            <option value="">{{ startPlaceholder }}</option>
             <option v-for="opt in startTimes" :key="opt.raw_value" :value="opt.raw_value">
               {{ opt.label }}
             </option>
@@ -100,6 +102,23 @@ const success = ref(false)
 const canSubmit = computed(
   () => !!startValue.value && !!endValue.value && !busy.value,
 )
+
+const startPlaceholder = computed(() => {
+  if (loadingStart.value) return '— 加载中… —'
+  if (startTimes.value.length === 0) return '— 暂无可预约时段 —'
+  return '— 请选择 —'
+})
+
+const usingHint = computed(() => {
+  if (loadingStart.value) return ''
+  const isFree = props.seat.status === 'free' || !props.seat.status
+  if (isFree) return ''
+  if (startTimes.value.length === 0) {
+    return `座位「${props.seat.name}」当前状态为 ${props.seat.status}，今日已无可预约时段。`
+  }
+  const earliest = startTimes.value[0]?.label ?? ''
+  return `座位「${props.seat.name}」当前正在使用，最早可从 ${earliest} 开始预约。`
+})
 
 onMounted(async () => {
   await loadStartTimes()
@@ -190,6 +209,12 @@ async function submit() {
 .notice.success {
   color: #0f684d;
   background: #e6f6ef;
+}
+
+.notice.info {
+  color: #1f4a90;
+  background: #eaf1ff;
+  font-weight: 600;
 }
 
 @media (max-width: 640px) {

@@ -68,6 +68,7 @@
           :key="seat.seat_id"
           class="seat-card"
           :class="seat.status"
+          :title="seat.status === 'free' ? '' : '当前正在使用，仍可预约——可选时段为占用结束之后的时间。'"
         >
           <strong>{{ seat.name }}</strong>
           <span>{{ seat.room_name ?? '-' }}</span>
@@ -75,7 +76,7 @@
           <button
             class="button muted small"
             type="button"
-            :disabled="seat.status !== 'free' || !state.userId"
+            :disabled="!state.userId"
             @click="openReservation(seat)"
           >
             预约
@@ -192,9 +193,12 @@ function onReserved(message: string): void {
 }
 
 .seat-card.using {
+  /* 当前正在使用 ≠ 不能预约：上游对 using 座位也允许预约占用结束之后的
+     时段，所以视觉上保留区分（虚线 + 轻度透明）但允许点击。 */
+  border-style: dashed;
   border-color: var(--border-strong);
-  background: #f1f4f6;
-  opacity: 0.7;
+  background: #f6f8fa;
+  opacity: 0.88;
 }
 
 .button.small {
