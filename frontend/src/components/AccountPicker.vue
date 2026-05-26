@@ -89,22 +89,43 @@ function togglePin(): void {
   display: inline-flex;
   align-items: end;
   gap: 8px;
+  width: 100%;
+  max-width: 360px;
 }
 
 .inline-picker {
-  max-width: 320px;
+  flex: 1;
+  min-width: 0;
+}
+
+.inline-picker select {
+  width: 100%;
 }
 
 .pin-toggle {
-  width: 32px;
-  min-width: 32px;
-  height: 32px;
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
   margin-bottom: 2px;
+  align-self: end;
 }
 
 .pin-toggle[aria-pressed='true'] {
   color: var(--primary-strong);
   border-color: #b7dfd7;
   background: #eaf7f4;
+}
+
+@media (max-width: 900px) {
+  .account-picker {
+    max-width: 100%;
+  }
+
+  .pin-toggle {
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
+    margin-bottom: 0;
+  }
 }
 </style>

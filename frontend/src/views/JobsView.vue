@@ -28,16 +28,16 @@
         <tbody>
           <tr v-if="jobs.length === 0"><td colspan="8">暂无作业</td></tr>
           <tr v-for="job in jobs" :key="job.id">
-            <td>{{ job.id }}</td>
-            <td>{{ job.task_type }}{{ job.task_id ? ` · #${job.task_id}` : '' }}</td>
-            <td>{{ job.library_user_id }}</td>
-            <td>
+            <td data-label="作业 ID">{{ job.id }}</td>
+            <td data-label="任务">{{ job.task_type }}{{ job.task_id ? ` · #${job.task_id}` : '' }}</td>
+            <td data-label="账号">{{ job.library_user_id }}</td>
+            <td data-label="状态">
               <span class="tag" :class="job.status">{{ job.status }}</span>
             </td>
-            <td>{{ formatTime(job.started_at) }}</td>
-            <td>{{ formatTime(job.finished_at) }}</td>
-            <td>{{ job.summary ?? '-' }}</td>
-            <td>
+            <td data-label="开始">{{ formatTime(job.started_at) }}</td>
+            <td data-label="结束">{{ formatTime(job.finished_at) }}</td>
+            <td data-label="结果">{{ job.summary ?? '-' }}</td>
+            <td data-label="操作">
               <RouterLink class="button muted small" :to="`/logs?job=${job.id}`">
                 <ScrollText :size="14" />
                 日志

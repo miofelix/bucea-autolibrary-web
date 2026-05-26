@@ -248,26 +248,26 @@
           </thead>
           <tbody>
             <tr v-for="task in tasks" :key="task.id">
-              <td>
+              <td data-label="任务">
                 <strong>{{ task.name }}</strong>
               </td>
-              <td>
+              <td data-label="操作">
                 <component :is="taskKind(task.task_type).icon" :size="14" class="row-icon" />
                 {{ taskKind(task.task_type).label }}
               </td>
-              <td>
+              <td data-label="触发">
                 <span v-if="task.mode === 'scheduled'" class="tag">
                   定时 · <code>{{ task.cron }}</code>
                 </span>
                 <span v-else class="tag">手动</span>
               </td>
-              <td>{{ userLabel(task.library_user_id) }}</td>
-              <td>
+              <td data-label="账号">{{ userLabel(task.library_user_id) }}</td>
+              <td data-label="状态">
                 <span class="tag" :class="task.enabled ? 'enabled' : 'disabled'">
                   {{ task.enabled ? '启用' : '停用' }}
                 </span>
               </td>
-              <td>
+              <td data-label="操作">
                 <div class="row-actions">
                   <button class="icon-button" type="button" title="立即运行" @click="runTask(task)">
                     <Play :size="16" />
@@ -866,5 +866,53 @@ async function runTask(task: TaskRecord): Promise<void> {
   border-radius: 8px;
   font-weight: 600;
   font-size: 0.84rem;
+}
+
+@media (max-width: 640px) {
+  .wizard li {
+    grid-template-columns: 26px minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  .kind-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .kind-card {
+    padding: 10px;
+  }
+
+  .kind-card small {
+    display: none;
+  }
+
+  .time-row {
+    grid-template-columns: 1fr;
+  }
+
+  .seat-search-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .seat-search-row .button {
+    align-self: flex-start;
+  }
+
+  .seat-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .seg {
+    width: 100%;
+  }
+
+  .seg-btn {
+    flex: 1;
+    padding: 10px 0;
+    font-size: 0.92rem;
+  }
 }
 </style>

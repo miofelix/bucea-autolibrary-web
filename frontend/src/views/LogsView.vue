@@ -108,4 +108,34 @@ function stop() {
   min-height: 32px;
   padding: 0 10px;
 }
+
+@media (max-width: 640px) {
+  .field.inline {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 4px;
+    width: 100%;
+  }
+
+  .field.inline input {
+    min-height: 44px;
+    font-size: 16px;
+  }
+
+  .log-toolbar .row-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .button.primary,
+  .button.muted {
+    min-height: 38px;
+    padding: 0 12px;
+  }
+
+  .log-output {
+    min-height: 320px;
+    font-size: 0.78rem;
+  }
+}
 </style>

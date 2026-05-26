@@ -48,15 +48,15 @@
             </tr>
             <template v-else>
               <tr v-for="item in users.items" :key="item.id">
-                <td>{{ item.username }}</td>
-                <td>{{ item.display_name || '-' }}</td>
-                <td>
+                <td data-label="账号">{{ item.username }}</td>
+                <td data-label="名称">{{ item.display_name || '-' }}</td>
+                <td data-label="状态">
                   <span class="tag" :class="item.enabled ? 'enabled' : 'disabled'">
                     {{ item.enabled ? '启用' : '停用' }}
                   </span>
                 </td>
-                <td>{{ formatTime(item.updated_at) }}</td>
-                <td>
+                <td data-label="更新时间">{{ formatTime(item.updated_at) }}</td>
+                <td data-label="操作">
                   <div class="row-actions">
                     <button class="icon-button" type="button" title="编辑" @click="editingUser = item">
                       <Pencil :size="16" />

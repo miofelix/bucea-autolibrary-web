@@ -130,20 +130,20 @@
           </thead>
           <tbody>
             <tr v-for="snap in snapshots" :key="snap.user.id">
-              <td>
+              <td data-label="账号">
                 <strong>{{ snap.user.username }}</strong>
                 <span v-if="snap.user.display_name" class="hint">{{ snap.user.display_name }}</span>
               </td>
-              <td>
+              <td data-label="会话">
                 <span class="tag" :class="snap.session?.logged_in ? 'enabled' : 'disabled'">
                   {{ snap.session?.logged_in ? '已登录' : '未登录' }}
                 </span>
               </td>
-              <td><code>{{ snap.session?.sys_username ?? '-' }}</code></td>
-              <td>
+              <td data-label="sysUsername"><code>{{ snap.session?.sys_username ?? '-' }}</code></td>
+              <td data-label="预约状态">
                 <code>{{ snap.session?.user_info?.currentReservationStatus ?? '-' }}</code>
               </td>
-              <td>
+              <td data-label="签到">
                 <code>{{ snap.session?.user_info?.userCheckedIn ?? '-' }}</code>
               </td>
             </tr>

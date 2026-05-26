@@ -164,13 +164,13 @@ async function submit() {
   place-items: center;
   padding: 24px;
   background: rgb(15 23 42 / 50%);
-  z-index: 50;
+  z-index: 70;
 }
 
 .dialog-card {
   width: min(100%, 520px);
   padding: 18px;
-  border-radius: 12px;
+  border-radius: 14px;
   background: var(--panel);
   box-shadow: var(--shadow);
 }
@@ -184,10 +184,32 @@ async function submit() {
 
 .dialog-card h3 {
   margin: 0;
+  font-size: 1.05rem;
 }
 
 .notice.success {
   color: #0f684d;
   background: #e6f6ef;
+}
+
+@media (max-width: 640px) {
+  .dialog-backdrop {
+    align-items: end;
+    padding: 0;
+  }
+
+  .dialog-card {
+    width: 100%;
+    max-height: 92vh;
+    padding: 16px 14px calc(16px + env(safe-area-inset-bottom, 0px));
+    border-radius: 16px 16px 0 0;
+    overflow-y: auto;
+    animation: slideUp 0.22s ease-out;
+  }
+
+  @keyframes slideUp {
+    from { transform: translateY(16px); opacity: 0.6; }
+    to { transform: translateY(0); opacity: 1; }
+  }
 }
 </style>

@@ -76,15 +76,30 @@ onMounted(async () => {
   place-items: center;
   padding: 24px;
   background: rgb(15 23 42 / 50%);
-  z-index: 50;
+  z-index: 70;
 }
 
 .dialog-card {
   width: min(100%, 560px);
   padding: 18px;
-  border-radius: 12px;
+  border-radius: 14px;
   background: var(--panel);
   box-shadow: var(--shadow);
+}
+
+@media (max-width: 640px) {
+  .dialog-backdrop {
+    align-items: end;
+    padding: 0;
+  }
+
+  .dialog-card {
+    width: 100%;
+    max-height: 92vh;
+    padding: 16px 14px calc(16px + env(safe-area-inset-bottom, 0px));
+    border-radius: 16px 16px 0 0;
+    overflow-y: auto;
+  }
 }
 
 .dialog-card header {

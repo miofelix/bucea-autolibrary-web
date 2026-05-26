@@ -47,19 +47,19 @@
         </thead>
         <tbody>
           <tr v-for="entry in entries" :key="(entry.reservation_id ?? '') + (entry.date ?? '')">
-            <td>
+            <td data-label="日期">
               <strong>{{ entry.date ?? entry.raw_date_label ?? '-' }}</strong>
               <span v-if="entry.raw_date_label && entry.raw_date_label !== entry.date" class="hint">
                 {{ entry.raw_date_label }}
               </span>
             </td>
-            <td>{{ entry.start_label && entry.end_label ? `${entry.start_label} - ${entry.end_label}` : '-' }}</td>
-            <td>{{ entry.room_name ?? '-' }}</td>
-            <td>
+            <td data-label="时间">{{ entry.start_label && entry.end_label ? `${entry.start_label} - ${entry.end_label}` : '-' }}</td>
+            <td data-label="位置">{{ entry.room_name ?? '-' }}</td>
+            <td data-label="状态">
               <span class="tag" :class="statusClass(entry.status)">{{ entry.status ?? '-' }}</span>
             </td>
-            <td><code>{{ entry.reservation_id ?? '-' }}</code></td>
-            <td>
+            <td data-label="凭证 ID"><code>{{ entry.reservation_id ?? '-' }}</code></td>
+            <td data-label="操作">
               <button
                 class="icon-button"
                 type="button"

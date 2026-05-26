@@ -202,4 +202,15 @@ function onReserved(message: string): void {
   padding: 0 10px;
   font-size: 0.82rem;
 }
+
+@media (max-width: 640px) {
+  .seat-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .seat-card {
+    padding: 10px;
+  }
+}
 </style>
