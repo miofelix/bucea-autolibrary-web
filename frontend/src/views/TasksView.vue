@@ -539,7 +539,15 @@ async function selectSeat(seat: SeatItem): Promise<void> {
 }
 
 function effectiveDate(): string {
-  return form.task_type === 'reserve' ? resolvedReserveDate.value : payload.date
+  // 给上游传的日期：T+0 时返回空字符串，让上游按它自己的「今天」逻辑解析；
+  // 否则给具体的 YYYY-MM-DD。这里有一段经验：从干净会话直接对
+  // /freeBook/ajaxSearch 或 /freeBook/ajaxGetTime 显式传 today 的 ISO 串，
+  // 上游会返回空时段（用户报告的 bug 现象）；改传空串后稳定。猜测上游有
+  // 一段「先按默认状态被点过一次」的隐式 prime 需求，对 T+0 我们绕过它。
+  if (form.task_type === 'reserve') {
+    return reserveDateOffset.value === 0 ? '' : resolvedReserveDate.value
+  }
+  return payload.date
 }
 
 async function loadStartTimesForTask(): Promise<void> {
